@@ -1,0 +1,67 @@
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        RENDER_DEPLOY_HOOK = credentials('https://api.render.com/deploy/srv-db95lnss728c73frvf30?key=lXGH42pFofU')
+    }
+
+    triggers {
+        githubPush()
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                sh 'node --version'
+                sh 'npm --version'
+                sh 'npm install'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh '''
+                    if node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then
+                        npm run build
+                    else
+                        node --check server.js
+                    fi
+                '''
+            }
+        }
+
+        stage('Deploy to Render') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh '''
+                    curl --fail --silent --show-error \
+                      --request POST \
+                      "$RENDER_DEPLOY_HOOK"
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully.'
+        }
+        failure {
+            echo 'Pipeline failed. Check the Jenkins console output.'
+        }
+    }
+}
